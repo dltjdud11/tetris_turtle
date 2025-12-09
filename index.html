@@ -3,16 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>모바일 테트리스</title>
-    <link rel="stylesheet" href="style.css">
+    <title>모바일 테트리스 게임 (단일 파일)</title>
+    
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* 상단부터 배치 */
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding-top: 20px;
+            background-color: #333;
+            font-family: Arial, sans-serif;
+            color: white;
+            overflow: hidden; 
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            background-color: #222;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-rows: repeat(20, 1fr); 
+            grid-template-columns: repeat(10, 1fr);
+            width: 300px; /* 기본 크기 */
+            height: 600px;
+            border: 3px solid #ccc;
+            background-color: #111;
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            border: 1px solid #000;
+        }
+
+        /* 테트로미노 블록 색상 */
+        .T { background-color: purple; border-color: #6a0080; }
+        .L { background-color: orange; border-color: #cc6600; }
+        .J { background-color: blue; border-color: #000080; }
+        .S { background-color: green; border-color: #004d00; }
+        .Z { background-color: red; border-color: #800000; }
+        .I { background-color: cyan; border-color: #008080; }
+        .O { background-color: yellow; border-color: #808000; }
+
+        .info-panel {
+            width: 300px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            font-size: 1.2em;
+        }
+        
+        #start-button {
+            padding: 10px 15px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        #start-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* --- 모바일 컨트롤 스타일링 --- */
+        .controls {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            padding: 15px 0;
+        }
+
+        .controls button {
+            padding: 15px 25px;
+            font-size: 24px;
+            background-color: #444;
+            color: white;
+            border: 2px solid #666;
+            border-radius: 10px;
+            cursor: pointer;
+            touch-action: manipulation; 
+            flex-grow: 1; 
+            margin: 0 5px;
+            /* 모바일에서 버튼 간격 조정 */
+            min-width: 60px;
+            height: 60px;
+        }
+
+        .controls button:active {
+            background-color: #666;
+        }
+
+        /* 모바일 화면 최적화 */
+        @media (max-width: 600px) {
+            #game-board, .info-panel {
+                width: 90vw; 
+                max-width: 300px;
+            }
+            #game-board {
+                height: calc(90vw * 2); 
+                max-height: 600px;
+            }
+            .controls {
+                width: 90vw;
+                max-width: 320px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div class="game-container">
-        <div id="game-board"></div>
+    <div class="game-wrapper">
         <div class="info-panel">
-            <p>Score: <span id="score">0</span></p>
-            <p>Next: <div id="next-tetromino"></div></p>
+            <p>SCORE: <span id="score">0</span></p>
+            <button id="start-button">START</button>
         </div>
+        
+        <div id="game-board">
+            </div>
         
         <div class="controls">
             <button id="left">⬅️</button>
@@ -21,7 +143,257 @@
             <button id="down">⬇️</button>
         </div>
     </div>
+    
+    <script>
+        // --- 게임 설정 ---
+        const COLS = 10;
+        const ROWS = 20;
+        let score = 0;
+        let gameBoard = [];
+        let currentTetromino;
+        let currentRotation = 0;
+        let currentPosition = 4;
+        let timerId = null;
 
-    <script src="script.js"></script>
+        const boardElement = document.getElementById('game-board');
+        const scoreElement = document.getElementById('score');
+        const startButton = document.getElementById('start-button');
+        const controls = {
+            left: document.getElementById('left'),
+            rotate: document.getElementById('rotate'),
+            right: document.getElementById('right'),
+            down: document.getElementById('down'),
+        };
+
+        // --- 테트로미노 모양 정의 ---
+        const TETROMINOS = [
+            [[1, COLS + 1, COLS * 2 + 1, 2], [COLS, COLS * 2, COLS * 2 + 1, COLS * 2 + 2], [1, COLS + 1, COLS * 2 + 1, COLS * 2], [COLS, COLS + 1, COLS + 2, COLS * 2 + 2]], // L
+            [[1, COLS + 1, COLS * 2 + 1, 0], [COLS, COLS * 2, COLS + 1, COLS + 2], [1, COLS + 1, COLS * 2 + 1, COLS * 2 + 2], [COLS + 2, COLS * 2, COLS * 2 + 1, COLS * 2 + 2]], // J
+            [[1, COLS, COLS + 1, COLS + 2], [1, COLS + 1, COLS * 2 + 1, COLS + 2], [COLS, COLS + 1, COLS + 2, COLS * 2 + 1], [1, COLS, COLS + 1, COLS * 2 + 1]], // T
+            [[COLS + 1, COLS + 2, COLS * 2, COLS * 2 + 1], [0, COLS, COLS + 1, COLS * 2 + 1]], // S
+            [[COLS, COLS + 1, COLS * 2 + 1, COLS * 2 + 2], [1, COLS, COLS + 1, COLS * 2]], // Z
+            [[1, COLS + 1, COLS * 2 + 1, COLS * 3 + 1], [COLS, COLS + 1, COLS + 2, COLS + 3]], // I
+            [[0, 1, COLS, COLS + 1]] // O
+        ];
+
+        const TETROMINO_NAMES = ['L', 'J', 'T', 'S', 'Z', 'I', 'O'];
+
+        // --- 보드 초기화 및 렌더링 ---
+        function createBoard() {
+            boardElement.innerHTML = '';
+            gameBoard = [];
+            for (let i = 0; i < COLS * ROWS; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                boardElement.appendChild(cell);
+                gameBoard.push(cell); 
+            }
+        }
+
+        // --- 블록 생성 ---
+        function generateTetromino() {
+            const randomIndex = Math.floor(Math.random() * TETROMINOS.length);
+            currentTetromino = TETROMINOS[randomIndex];
+            currentRotation = 0;
+            currentPosition = 4;
+
+            // 게임 오버 체크: 새 블록 생성 위치에 이미 블록이 있으면 게임 오버
+            if (checkCollision(currentPosition)) {
+                gameOver();
+                return false;
+            }
+            draw();
+            return true;
+        }
+
+        // --- 블록 그리기/지우기 ---
+        function draw() {
+            const name = TETROMINO_NAMES[TETROMINOS.indexOf(currentTetromino)];
+            currentTetromino[currentRotation].forEach(index => {
+                const targetIndex = currentPosition + index;
+                if (gameBoard[targetIndex]) {
+                    gameBoard[targetIndex].classList.add(name);
+                }
+            });
+        }
+
+        function undraw() {
+            const name = TETROMINO_NAMES[TETROMINOS.indexOf(currentTetromino)];
+            currentTetromino[currentRotation].forEach(index => {
+                const targetIndex = currentPosition + index;
+                if (gameBoard[targetIndex]) {
+                    gameBoard[targetIndex].classList.remove(name);
+                }
+            });
+        }
+
+        // --- 충돌 감지 ---
+        function checkCollision(nextPosition, nextRotation = currentRotation) {
+            return currentTetromino[nextRotation].some(index => {
+                const targetIndex = nextPosition + index;
+                
+                // 1. 보드 바닥을 넘었는지
+                if (targetIndex >= COLS * ROWS) return true;
+                
+                // 2. 보드 좌우 경계를 넘었는지
+                const isLeftEdge = (currentPosition + index) % COLS === 0 && (index + nextPosition) % COLS === COLS - 1;
+                const isRightEdge = (currentPosition + index) % COLS === COLS - 1 && (index + nextPosition) % COLS === 0;
+
+                if (isLeftEdge || isRightEdge) return true;
+
+                // 3. 이미 채워진 셀에 충돌하는지 (클래스가 'cell' 이외에 다른 클래스(색상)가 있는지)
+                if (targetIndex >= 0 && gameBoard[targetIndex] && gameBoard[targetIndex].classList.length > 1) return true;
+                
+                return false;
+            });
+        }
+        
+        // --- 블록 이동 로직 ---
+        function move(direction) {
+            if (!timerId) return;
+            undraw();
+            let newPosition = currentPosition + direction;
+
+            // 벽 충돌 체크 (좌/우)
+            const isLeft = currentTetromino[currentRotation].some(index => (currentPosition + index) % COOLS === 0) && direction === -1;
+            const isRight = currentTetromino[currentRotation].some(index => (currentPosition + index) % COLS === COLS - 1) && direction === 1;
+
+            if (isLeft || isRight) {
+                newPosition = currentPosition;
+            }
+
+            if (!checkCollision(newPosition)) {
+                currentPosition = newPosition;
+            }
+            draw();
+        }
+
+        // --- 블록 회전 로직 ---
+        function rotate() {
+            if (!timerId) return;
+            undraw();
+            const nextRotation = (currentRotation + 1) % currentTetromino.length;
+
+            if (!checkCollision(currentPosition, nextRotation)) {
+                currentRotation = nextRotation;
+            }
+            draw();
+        }
+
+        // --- 블록 하강 로직 ---
+        function fall() {
+            undraw();
+            let newPosition = currentPosition + COLS;
+
+            if (checkCollision(newPosition)) {
+                // 충돌하면 블록 고정
+                freeze();
+                checkLines();
+                generateTetromino(); // 새 블록 생성
+            } else {
+                currentPosition = newPosition;
+            }
+            draw();
+        }
+
+        // --- 블록 고정 ---
+        function freeze() {
+            const name = TETROMINO_NAMES[TETROMINOS.indexOf(currentTetromino)];
+            currentTetromino[currentRotation].forEach(index => {
+                if (gameBoard[currentPosition + index]) {
+                    gameBoard[currentPosition + index].classList.add(name);
+                }
+            });
+        }
+
+        // --- 줄 제거 및 점수 계산 (개선된 로직) ---
+        function checkLines() {
+            let linesCleared = 0;
+            
+            for (let i = 0; i < ROWS; i++) {
+                const start = i * COLS;
+                const rowCells = gameBoard.slice(start, start + COLS);
+                
+                // 해당 줄의 모든 셀이 채워져 있는지 확인 (클래스 길이가 1보다 크면 채워진 셀)
+                const isFull = rowCells.every(cell => cell.classList.length > 1);
+                
+                if (isFull) {
+                    linesCleared++;
+                    
+                    // 1. 해당 줄을 DOM과 배열에서 제거
+                    rowCells.forEach(cell => boardElement.removeChild(cell));
+                    const newRow = Array(COLS).fill(null).map(() => {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        return cell;
+                    });
+
+                    // 2. 제거된 줄 위에 새 빈 줄을 삽입 (배열 및 DOM)
+                    gameBoard.splice(start, COLS);
+                    gameBoard.unshift(...newRow);
+
+                    // 3. DOM에 새로운 배열 반영 (상단에 새 셀을 삽입)
+                    newRow.forEach(cell => boardElement.insertBefore(cell, boardElement.firstChild));
+                }
+            }
+            
+            if (linesCleared > 0) {
+                score += linesCleared * 100;
+                scoreElement.textContent = score;
+            }
+        }
+
+        // --- 게임 오버 ---
+        function gameOver() {
+            clearInterval(timerId);
+            timerId = null;
+            startButton.textContent = 'RESTART';
+            alert(`Game Over! Score: ${score}`);
+        }
+
+        // --- 이벤트 리스너 ---
+
+        // PC 키보드 이벤트
+        document.addEventListener('keydown', (e) => {
+            if (!timerId) return; 
+
+            if (e.key === 'ArrowLeft' || e.key === 'A' || e.key === 'a') move(-1);
+            else if (e.key === 'ArrowRight' || e.key === 'D' || e.key === 'd') move(1);
+            else if (e.key === 'ArrowDown' || e.key === 'S' || e.key === 's') fall();
+            else if (e.key === 'ArrowUp' || e.key === 'W' || e.key === 'w') rotate();
+        });
+
+        // 모바일/터치 버튼 이벤트 (touchstart 사용: 더 빠른 반응)
+        controls.left.addEventListener('touchstart', (e) => { e.preventDefault(); move(-1); });
+        controls.right.addEventListener('touchstart', (e) => { e.preventDefault(); move(1); });
+        controls.down.addEventListener('touchstart', (e) => { e.preventDefault(); fall(); });
+        controls.rotate.addEventListener('touchstart', (e) => { e.preventDefault(); rotate(); });
+
+
+        // 게임 시작/일시정지 버튼
+        startButton.addEventListener('click', () => {
+            if (timerId) {
+                // 일시 정지
+                clearInterval(timerId);
+                timerId = null;
+                startButton.textContent = 'RESUME';
+            } else {
+                if (startButton.textContent === 'START' || startButton.textContent === 'RESTART') {
+                    // 새 게임 시작
+                    createBoard();
+                    score = 0;
+                    scoreElement.textContent = score;
+                    generateTetromino();
+                }
+                
+                // 게임 재개 또는 시작
+                timerId = setInterval(fall, 800); // 하강 속도: 0.8초
+                startButton.textContent = 'PAUSE';
+            }
+        });
+
+        // --- 초기 실행 ---
+        createBoard();
+    </script>
 </body>
 </html>
